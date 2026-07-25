@@ -1,19 +1,53 @@
 # SimpleSign
 
-SimpleSign is a no-login PDF signing MVP for non-technical clients. A business owner uploads a PDF, sends the generated link, and receives the signed PDF by email after the client signs in the browser.
+SimpleSign is a minimal Next.js application for signing PDF agreements in the browser. A business owner uploads an agreement, sends the generated signing link, and receives the signed PDF by email after the client signs.
 
-## Installation
+The product intentionally has no login, no accounts, no database, and no separate backend service.
+
+## Project Overview
+
+- Framework: Next.js App Router with TypeScript.
+- Styling: Tailwind CSS.
+- PDF rendering: pdf.js.
+- PDF signing: pdf-lib.
+- Signature input: react-signature-canvas.
+- Email delivery: Nodemailer over SMTP.
+- Storage: temporary server filesystem storage under `.data/contracts` by default.
+
+## Local Development
+
+1. Install dependencies:
 
 ```bash
 npm install
+```
+
+2. Create `.env.local` from `.env.example` and fill in SMTP values.
+
+3. Start the development server:
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`, upload a PDF, and send the generated `/sign/...` link.
+4. Open `http://localhost:3000`.
+
+## Render Deployment
+
+Deploy as a Render Web Service.
+
+Recommended Render settings:
+
+- Runtime: `Node`
+- Build command: `npm install && npm run build`
+- Start command: `npm start`
+- Node version: `20` or newer
+
+This repository also includes `render.yaml`, so Render can read the service settings automatically.
 
 ## Environment Variables
 
-Create `.env.local` locally or configure the same variables in your hosting provider:
+Required:
 
 ```bash
 EMAIL_HOST=smtp.example.com
@@ -23,52 +57,57 @@ EMAIL_PASS=your-smtp-password
 OWNER_EMAIL=owner@example.com
 ```
 
+Optional:
+
+```bash
+CONTRACT_STORAGE_DIR=/var/data/contracts
+```
+
+Use `CONTRACT_STORAGE_DIR` only if a Render persistent disk is mounted. Without it, SimpleSign stores uploaded and signed PDFs in `.data/contracts` on the service filesystem. That storage is suitable for temporary recovery but may be lost if the service is restarted or redeployed.
+
 ## SMTP Configuration
 
-Use any SMTP provider that supports username/password authentication. Common ports:
+Use any SMTP provider that supports username and password authentication.
 
-- `587` for STARTTLS
-- `465` for SSL
+Common ports:
 
-`OWNER_EMAIL` receives the signed PDF attachment. If email sending fails, SimpleSign still saves the signed PDF in temporary server storage under `.data/contracts`.
+- `587` for STARTTLS.
+- `465` for SSL.
 
-## Deployment on Vercel
+`OWNER_EMAIL` receives the signed PDF attachment. If SMTP delivery fails, SimpleSign still saves the signed PDF temporarily so the document is not lost during the request.
 
-1. Push the project to GitHub.
-2. Import it in Vercel as a Next.js project.
-3. Add the SMTP environment variables from `.env.example`.
-4. Deploy.
+## Troubleshooting
 
-Vercel serverless storage is temporary. For production retention, download signed PDFs from email or move storage to durable object storage later.
+If upload fails:
 
-## Deployment on Render
+- Confirm the file is a PDF.
+- Confirm the file is under 20MB.
+- Check Render logs for filesystem write errors.
 
-1. Create a Render Web Service from the repository.
-2. Use these commands:
+If signing succeeds but email does not arrive:
+
+- Confirm all SMTP environment variables are set in Render.
+- Confirm `EMAIL_PORT` is numeric.
+- Confirm the SMTP provider allows sending from `EMAIL_USER`.
+- Check spam or security restrictions in the SMTP provider.
+
+If signed PDF recovery is required after restarts:
+
+- Add a Render persistent disk.
+- Set `CONTRACT_STORAGE_DIR` to the mounted disk path.
+
+## Production Commands
 
 ```bash
 npm install
+npm run lint
 npm run build
-npm run start
+npm start
 ```
 
-3. Add the SMTP environment variables from `.env.example`.
-4. Deploy.
+## Security Notes
 
-Render disk storage is suitable for temporary recovery. Add a persistent disk if signed PDF recovery must survive restarts.
-
-## Project Architecture
-
-- `src/app/page.tsx`: landing page and upload entry.
-- `src/app/sign/[id]/page.tsx`: unique client signing page.
-- `src/app/success/page.tsx`: final confirmation screen.
-- `src/app/api/contracts/route.ts`: PDF upload and link creation.
-- `src/app/api/contracts/[id]/pdf/route.ts`: inline original PDF delivery.
-- `src/app/api/contracts/[id]/sign/route.ts`: signature insertion, signed PDF saving, and email delivery.
-- `src/app/api/contracts/[id]/signed/route.ts`: recovery download for signed PDFs.
-- `src/components`: upload UI, PDF renderer, and signing UI.
-- `src/lib`: contract storage, PDF manipulation, and email delivery.
-
-## Production Notes
-
-SimpleSign intentionally avoids accounts, databases, and separate backend services. Uploaded contracts and signed PDFs are stored temporarily on the server filesystem. For a larger production rollout, add durable private file storage and scheduled cleanup while preserving the same client UX.
+- `.env` files are ignored.
+- `node_modules` is ignored.
+- `.data` is ignored so uploaded and signed PDFs are not committed.
+- No SMTP passwords or secrets should be committed to the repository.

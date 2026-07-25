@@ -47,7 +47,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         signedAt,
         emailSentAt: new Date().toISOString(),
       });
-    } catch {
+    } catch (emailError) {
+      console.error("Failed to send signed PDF email", {
+        contractId: id,
+        error: emailError instanceof Error ? emailError.message : emailError,
+      });
+
       await writeMetadata(id, {
         ...metadata,
         signedAt,
@@ -57,8 +62,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({
         ok: true,
         emailSent: false,
-        message:
-          "Your document was signed and saved. We could not send the email right now, but the signed PDF was not lost.",
+        signedUrl: `/api/contracts/${id}/signed`,
+        message: "המסמך נשמר, אך כרגע לא ניתן לשלוח אותו במייל.",
       });
     }
 
@@ -67,7 +72,11 @@ export async function POST(request: Request, { params }: RouteContext) {
       emailSent: true,
       message: "Your document has been successfully signed.",
     });
-  } catch {
+  } catch (signError) {
+    console.error("Failed to sign PDF", {
+      error: signError instanceof Error ? signError.message : signError,
+    });
+
     return NextResponse.json(
       { message: "We could not finish the signature. Please try again." },
       { status: 500 },

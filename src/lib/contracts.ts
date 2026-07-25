@@ -13,7 +13,9 @@ export type ContractMetadata = {
   emailErrorAt?: string;
 };
 
-const dataRoot = path.join(process.cwd(), ".data", "contracts");
+const dataRoot = process.env.CONTRACT_STORAGE_DIR
+  ? path.resolve(process.env.CONTRACT_STORAGE_DIR)
+  : path.join(process.cwd(), ".data", "contracts");
 
 export function createContractId() {
   return randomBytes(9).toString("base64url");

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, FileUp, Loader2, Send, ShieldCheck } from "lucide-react";
+import { Check, Copy, FileUp, Loader2, Send } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 const maxPdfBytes = 20 * 1024 * 1024;
@@ -27,13 +27,13 @@ export function UploadCard() {
 
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       setState("error");
-      setError("אפשר להעלות כאן קובץ PDF בלבד.");
+      setError("אפשר להעלות כאן מסמך מתאים בלבד.");
       return;
     }
 
     if (file.size > maxPdfBytes) {
       setState("error");
-      setError("הקובץ צריך להיות קטן מ־20MB.");
+      setError("הקובץ גדול מדי. יש לבחור מסמך קטן יותר.");
       return;
     }
 
@@ -59,7 +59,7 @@ export function UploadCard() {
       setError(
         uploadError instanceof Error
           ? uploadError.message
-          : "לא הצלחנו להעלות את המסמך. נסו שוב.",
+          : "לא הצלחנו לשמור את המסמך. יש לנסות שוב.",
       );
     }
   }
@@ -111,18 +111,18 @@ export function UploadCard() {
             }}
             className="group flex min-h-80 w-full flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-[#DCD3C9] bg-[#FAF8F5]/80 px-6 py-12 text-center transition duration-150 hover:border-[#BBDDFA] hover:bg-white disabled:cursor-wait"
           >
-            <span className="mb-7 flex size-20 items-center justify-center rounded-[1.65rem] bg-[#BBDDFA]/55 text-[#2F2F2F] shadow-[0_18px_45px_rgba(187,221,250,0.35)]">
+            <span className="mb-7 flex size-20 items-center justify-center rounded-[1.65rem] bg-[#BBDDFA]/55 text-[#2E2E2E] shadow-[0_18px_45px_rgba(187,221,250,0.35)]">
               {state === "uploading" ? (
                 <Loader2 className="size-9 animate-spin" aria-hidden />
               ) : (
                 <FileUp className="size-9" aria-hidden />
               )}
             </span>
-            <span className="text-3xl font-semibold tracking-[-0.02em] text-[#2F2F2F] sm:text-4xl">
-              {state === "uploading" ? "יוצרות קישור רגוע" : "העלאת PDF"}
+            <span className="text-3xl font-semibold tracking-[-0.02em] text-[#2E2E2E] sm:text-4xl">
+              {state === "uploading" ? "מכינה קישור" : "בחרי הסכם"}
             </span>
-            <span className="mt-4 max-w-sm text-lg leading-8 text-[#7B7B7B]">
-              גררו לכאן את המסמך, או לחצו לבחירה מהמחשב. עד 20MB.
+            <span className="mt-4 max-w-sm text-xl leading-9 text-[#757575]">
+              לחצי כאן כדי לבחור את ההסכם.
             </span>
             {error ? (
               <span className="mt-6 rounded-full bg-[#E9DCCF]/45 px-5 py-2.5 text-base font-semibold text-[#8A5F52]">
@@ -137,24 +137,24 @@ export function UploadCard() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="rounded-[1.5rem] border border-[#ECE7E1] bg-[#FAF8F5] p-6 text-[#2F2F2F] sm:p-8"
+            className="rounded-[1.5rem] border border-[#ECE7E1] bg-[#FAF8F5] p-6 text-[#2E2E2E] sm:p-8"
           >
-            <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-[#CAD8C5] text-[#2F2F2F] shadow-[0_16px_36px_rgba(202,216,197,0.45)]">
+            <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-[#CAD8C5] text-[#2E2E2E] shadow-[0_16px_36px_rgba(202,216,197,0.45)]">
               <Check className="size-9" aria-hidden />
             </div>
-            <h2 className="text-3xl font-semibold tracking-[-0.02em]">הקישור מוכן לשליחה</h2>
-            <p className="mt-3 text-lg leading-8 text-[#7B7B7B]">
-              שולחים בוואטסאפ. הלקוח פותח, חותם, ומסיים.
+            <h2 className="text-3xl font-semibold tracking-[-0.02em]">הקישור מוכן</h2>
+            <p className="mt-3 text-xl leading-9 text-[#757575]">
+              שלחי אותו ללקוחה בוואטסאפ.
             </p>
-            <div className="mt-6 rounded-2xl border border-[#ECE7E1] bg-white p-4 text-left text-base break-all text-[#2F2F2F]" dir="ltr">
+            <div className="mt-6 rounded-2xl border border-[#ECE7E1] bg-white p-4 text-left text-base break-all text-[#757575]" dir="ltr">
               {absoluteSignUrl}
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid gap-3">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(`אפשר לחתום כאן על המסמך: ${absoluteSignUrl}`)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-[#BBDDFA] px-5 text-lg font-semibold text-[#2F2F2F] shadow-[0_14px_36px_rgba(187,221,250,0.35)] transition duration-150 hover:bg-[#C9E5FB]"
+                className="inline-flex min-h-16 items-center justify-center gap-2 rounded-2xl bg-[#BBDDFA] px-6 text-xl font-semibold text-[#2E2E2E] shadow-[0_14px_36px_rgba(187,221,250,0.35)] transition duration-150 hover:bg-[#C9E5FB]"
               >
                 <Send className="size-5" aria-hidden />
                 שליחה בוואטסאפ
@@ -162,7 +162,7 @@ export function UploadCard() {
               <button
                 type="button"
                 onClick={() => void copyLink()}
-                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-[#ECE7E1] bg-white px-5 text-lg font-semibold text-[#2F2F2F] transition duration-150 hover:bg-[#FAF8F5]"
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-[#ECE7E1] bg-white px-5 text-lg font-semibold text-[#757575] transition duration-150 hover:bg-[#FAF8F5]"
               >
                 {copied ? <Check className="size-5" aria-hidden /> : <Copy className="size-5" aria-hidden />}
                 {copied ? "הועתק" : "העתקת קישור"}
@@ -172,10 +172,6 @@ export function UploadCard() {
         )}
       </AnimatePresence>
 
-      <div className="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-[#7B7B7B]">
-        <ShieldCheck className="size-4" aria-hidden />
-        בלי חשבון. בלי התקנה. בלי מאמץ.
-      </div>
     </motion.div>
   );
 }
