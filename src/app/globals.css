@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf8f5;
+  --foreground: #2f2f2f;
+  --muted: #7b7b7b;
+  --border: #ece7e1;
+  --accent: #bbddfa;
+  --accent-secondary: #e9dccf;
+  --success: #cad8c5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 16% 8%, rgba(187, 221, 250, 0.22), transparent 28rem),
+    radial-gradient(circle at 85% 22%, rgba(233, 220, 207, 0.3), transparent 26rem),
+    var(--background);
+  color: var(--foreground);
+  font-family:
+    var(--font-assistant),
+    "Assistant",
+    "Heebo",
+    Arial,
+    sans-serif;
+  text-rendering: geometricPrecision;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(187, 221, 250, 0.95);
+  outline-offset: 4px;
+}
+
+::selection {
+  background: rgba(187, 221, 250, 0.55);
+  color: var(--foreground);
+}
+
+.pdf-page-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
