@@ -9,8 +9,8 @@ const assistant = Assistant({
 });
 
 export const metadata: Metadata = {
-  title: "חתימה שקטה למסמכים",
-  description: "חתימה נעימה ופשוטה על מסמכי PDF.",
+  title: "AdiSignSocial",
+  description: "חתימה נעימה על הסכם מול עדי.",
 };
 
 export const viewport: Viewport = {
