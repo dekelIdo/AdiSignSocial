@@ -12,16 +12,26 @@ export async function addSignatureToLastPage(pdfBytes: Uint8Array, signatureData
   const lastPage = pages[pages.length - 1];
   const { width, height } = lastPage.getSize();
 
-  const maxWidth = Math.min(210, width * 0.36);
-  const maxHeight = 82;
+  // Coordinates are PDF page units, not screen pixels. The signature is placed
+  // above the lower-left signing line area and scaled relative to page size.
+  const pageMarginX = width * 0.1;
+  const pageMarginY = height * 0.08;
+  const leftSignatureLineY = height * 0.12;
+  const gapAboveLine = height * 0.015;
+  const maxWidth = width * 0.32;
+  const maxHeight = height * 0.085;
   const scale = Math.min(maxWidth / signatureImage.width, maxHeight / signatureImage.height);
   const signatureWidth = signatureImage.width * scale;
   const signatureHeight = signatureImage.height * scale;
-  const margin = Math.min(48, width * 0.08);
+  const x = pageMarginX;
+  const y = Math.min(
+    height - signatureHeight - pageMarginY,
+    Math.max(pageMarginY, leftSignatureLineY + gapAboveLine),
+  );
 
   lastPage.drawImage(signatureImage, {
-    x: width - signatureWidth - margin,
-    y: Math.max(margin, height * 0.08),
+    x,
+    y,
     width: signatureWidth,
     height: signatureHeight,
   });

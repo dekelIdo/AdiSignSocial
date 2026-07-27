@@ -64,8 +64,10 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
       }
 
       const baseViewport = page.getViewport({ scale: 1 });
-      const scale = width / baseViewport.width;
+      const displayWidth = Math.max(1, Math.floor(width));
+      const scale = displayWidth / baseViewport.width;
       const viewport = page.getViewport({ scale });
+      const displayHeight = Math.ceil(viewport.height);
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d", { alpha: false });
@@ -74,10 +76,10 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
         return;
       }
 
-      canvas.width = Math.floor(viewport.width * pixelRatio);
-      canvas.height = Math.floor(viewport.height * pixelRatio);
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
+      canvas.width = Math.ceil(displayWidth * pixelRatio);
+      canvas.height = Math.ceil(displayHeight * pixelRatio);
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
