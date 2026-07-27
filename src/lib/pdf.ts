@@ -23,10 +23,11 @@ export async function addSignatureToLastPage(pdfBytes: Uint8Array, signatureData
   const scale = Math.min(maxWidth / signatureImage.width, maxHeight / signatureImage.height);
   const signatureWidth = signatureImage.width * scale;
   const signatureHeight = signatureImage.height * scale;
+  const moveSignatureUp = height * 0.2;
   const x = pageMarginX;
   const y = Math.min(
     height - signatureHeight - pageMarginY,
-    Math.max(pageMarginY, leftSignatureLineY + gapAboveLine),
+    Math.max(pageMarginY, leftSignatureLineY + gapAboveLine + moveSignatureUp),
   );
 
   lastPage.drawImage(signatureImage, {

@@ -9,10 +9,14 @@ type PdfPageProps = {
 };
 
 export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(pageNumber <= 2);
   const [width, setWidth] = useState(0);
+  const [pageImage, setPageImage] = useState<{
+    url: string;
+    width: number;
+    height: number;
+  } | null>(null);
 
   useEffect(() => {
     const node = containerRef.current;
@@ -52,9 +56,10 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
   useEffect(() => {
     let cancelled = false;
     let renderTask: { cancel: () => void; promise: Promise<void> } | undefined;
+    let objectUrl = "";
 
     async function renderPage() {
-      if (!visible || !width || !canvasRef.current) {
+      if (!visible || !width) {
         return;
       }
 
@@ -68,8 +73,10 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
       const scale = displayWidth / baseViewport.width;
       const viewport = page.getViewport({ scale });
       const displayHeight = Math.ceil(viewport.height);
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
-      const canvas = canvasRef.current;
+      // Render the uploaded PDF page into a high-resolution canvas image.
+      // This keeps the PDF itself as the source of truth and avoids HTML/CSS text recreation.
+      const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
+      const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d", { alpha: false });
 
       if (!context) {
@@ -78,16 +85,14 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
 
       canvas.width = Math.ceil(displayWidth * pixelRatio);
       canvas.height = Math.ceil(displayHeight * pixelRatio);
-      canvas.style.width = `${displayWidth}px`;
-      canvas.style.height = `${displayHeight}px`;
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
+      const renderViewport = page.getViewport({ scale: scale * pixelRatio });
 
       renderTask = page.render({
         canvas,
         canvasContext: context,
-        viewport,
+        viewport: renderViewport,
         intent: "display",
         background: "rgb(255,255,255)",
       });
@@ -96,6 +101,31 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
           throw error;
         }
       });
+
+      if (cancelled) {
+        return;
+      }
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, "image/png");
+      });
+
+      if (!blob || cancelled) {
+        return;
+      }
+
+      objectUrl = URL.createObjectURL(blob);
+      setPageImage((previousImage) => {
+        if (previousImage) {
+          URL.revokeObjectURL(previousImage.url);
+        }
+
+        return {
+          url: objectUrl,
+          width: displayWidth,
+          height: displayHeight,
+        };
+      });
     }
 
     void renderPage();
@@ -103,14 +133,25 @@ export function PdfPage({ pdf, pageNumber }: PdfPageProps) {
     return () => {
       cancelled = true;
       renderTask?.cancel();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [pdf, pageNumber, visible, width]);
 
   return (
     <div ref={containerRef} className="mx-auto w-full max-w-[760px]">
       <div className="overflow-hidden rounded-[1.35rem] bg-white shadow-[0_24px_80px_rgba(47,47,47,0.1)] ring-1 ring-[#ECE7E1]">
-        {visible ? (
-          <canvas ref={canvasRef} className="pdf-page-canvas" aria-label={`עמוד ${pageNumber}`} />
+        {visible && pageImage ? (
+          // eslint-disable-next-line @next/next/no-img-element -- The source is a client-generated PNG blob from the uploaded PDF.
+          <img
+            src={pageImage.url}
+            width={pageImage.width}
+            height={pageImage.height}
+            className="block h-auto w-full select-none"
+            alt={`עמוד ${pageNumber}`}
+            draggable={false}
+          />
         ) : (
           <div className="h-[720px] animate-pulse bg-[#F3EEE8]" />
         )}
