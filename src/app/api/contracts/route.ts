@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
     if (file.size > MAX_PDF_BYTES) {
       return NextResponse.json(
-        { message: "Please upload a PDF smaller than 20MB." },
+        { message: "Please upload a PDF up to 60MB." },
         { status: 400 },
       );
     }

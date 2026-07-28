@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { randomBytes } from "crypto";
 
-export const MAX_PDF_BYTES = 20 * 1024 * 1024;
+export const MAX_PDF_BYTES = 60 * 1024 * 1024;
 
 export type ContractMetadata = {
   id: string;

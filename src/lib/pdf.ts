@@ -1,5 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 
+const SIGNATURE_Y_OFFSET = -80;
+
 export async function addSignatureToLastPage(pdfBytes: Uint8Array, signatureDataUrl: string) {
   const base64Signature = signatureDataUrl.split(",")[1];
   if (!base64Signature) {
@@ -27,7 +29,7 @@ export async function addSignatureToLastPage(pdfBytes: Uint8Array, signatureData
   const x = pageMarginX;
   const y = Math.min(
     height - signatureHeight - pageMarginY,
-    Math.max(pageMarginY, leftSignatureLineY + gapAboveLine + moveSignatureUp),
+    Math.max(pageMarginY, leftSignatureLineY + gapAboveLine + moveSignatureUp - SIGNATURE_Y_OFFSET),
   );
 
   lastPage.drawImage(signatureImage, {

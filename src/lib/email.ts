@@ -3,7 +3,6 @@ import nodemailer from "nodemailer";
 type SendSignedPdfInput = {
   pdfBytes: Uint8Array;
   fileName: string;
-  contractId: string;
 };
 
 function requiredEnv(name: string) {
@@ -27,7 +26,6 @@ function getEmailPort() {
 export async function sendSignedPdfEmail({
   pdfBytes,
   fileName,
-  contractId,
 }: SendSignedPdfInput) {
   const port = getEmailPort();
   const user = requiredEnv("EMAIL_USER");
@@ -46,10 +44,17 @@ export async function sendSignedPdfEmail({
   });
 
   await transporter.sendMail({
-    from: `"SimpleSign" <${user}>`,
+    from: `"AdiSignSocial" <${user}>`,
     to: requiredEnv("OWNER_EMAIL"),
-    subject: "Your signed contract is ready",
-    text: `A client signed ${fileName}. The signed PDF is attached.\n\nContract ID: ${contractId}`,
+    subject: "הסכם חדש נחתם",
+    text: `שלום עדי,
+
+התקבל הסכם חדש חתום.
+
+המסמך החתום מצורף למייל זה.
+
+בברכה,
+AdiSignSocial`,
     attachments: [
       {
         filename: fileName.replace(/\.pdf$/i, "-signed.pdf"),

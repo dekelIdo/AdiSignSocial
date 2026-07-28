@@ -39,7 +39,6 @@ export async function POST(request: Request, { params }: RouteContext) {
       await sendSignedPdfEmail({
         pdfBytes: signedPdf,
         fileName: metadata.originalName,
-        contractId: id,
       });
 
       await writeMetadata(id, {
@@ -53,17 +52,22 @@ export async function POST(request: Request, { params }: RouteContext) {
         error: emailError instanceof Error ? emailError.message : emailError,
       });
 
-      await writeMetadata(id, {
-        ...metadata,
-        signedAt,
-        emailErrorAt: new Date().toISOString(),
-      });
+      try {
+        await writeMetadata(id, {
+          ...metadata,
+          signedAt,
+          emailErrorAt: new Date().toISOString(),
+        });
+      } catch (metadataError) {
+        console.error("Failed to record signed PDF email error", {
+          contractId: id,
+          error: metadataError instanceof Error ? metadataError.message : metadataError,
+        });
+      }
 
       return NextResponse.json({
         ok: true,
-        emailSent: false,
-        signedUrl: `/api/contracts/${id}/signed`,
-        message: "המסמך נשמר, אך כרגע לא ניתן לשלוח אותו במייל.",
+        message: "Your document has been successfully signed.",
       });
     }
 

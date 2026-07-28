@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, Copy, FileUp, Loader2, Send } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
-const maxPdfBytes = 20 * 1024 * 1024;
+const maxPdfBytes = 60 * 1024 * 1024;
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -33,7 +33,7 @@ export function UploadCard() {
 
     if (file.size > maxPdfBytes) {
       setState("error");
-      setError("הקובץ גדול מדי. יש לבחור מסמך קטן יותר.");
+      setError("הקובץ גדול מדי. אפשר להעלות PDF עד 60MB.");
       return;
     }
 
