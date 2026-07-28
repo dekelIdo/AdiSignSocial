@@ -43,6 +43,8 @@ export async function sendSignedPdfEmail({
     },
   });
 
+  await transporter.verify();
+
   await transporter.sendMail({
     from: `"AdiSignSocial" <${user}>`,
     to: requiredEnv("OWNER_EMAIL"),

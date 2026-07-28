@@ -50,11 +50,11 @@ This repository also includes `render.yaml`, so Render can read the service sett
 Required:
 
 ```bash
-EMAIL_HOST=smtp.example.com
+EMAIL_HOST=smtp-relay.brevo.com
 EMAIL_PORT=587
-EMAIL_USER=your-smtp-user@example.com
-EMAIL_PASS=your-smtp-password
-OWNER_EMAIL=owner@example.com
+EMAIL_USER=<Brevo SMTP Login>
+EMAIL_PASS=<Brevo SMTP Key>
+OWNER_EMAIL=adiarieli@gmail.com
 ```
 
 Optional:
@@ -67,7 +67,7 @@ Use `CONTRACT_STORAGE_DIR` only if a Render persistent disk is mounted. Without 
 
 ## SMTP Configuration
 
-Use any SMTP provider that supports username and password authentication.
+Use Brevo SMTP with username and password authentication.
 
 Common ports:
 
@@ -81,15 +81,15 @@ Common ports:
 If upload fails:
 
 - Confirm the file is a PDF.
-- Confirm the file is under 20MB.
+- Confirm the file is under 60MB.
 - Check Render logs for filesystem write errors.
 
 If signing succeeds but email does not arrive:
 
 - Confirm all SMTP environment variables are set in Render.
 - Confirm `EMAIL_PORT` is numeric.
-- Confirm the SMTP provider allows sending from `EMAIL_USER`.
-- Check spam or security restrictions in the SMTP provider.
+- Confirm Brevo allows sending from `EMAIL_USER`.
+- Check spam or security restrictions in Brevo.
 
 If signed PDF recovery is required after restarts:
 
