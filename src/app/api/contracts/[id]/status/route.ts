@@ -23,6 +23,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       emailSent: Boolean(metadata.emailSentAt),
       clientName: metadata.clientName ?? "",
       fileName: metadata.signedFileName || signedFileName(metadata.clientName),
+      signatureTarget: metadata.signatureTarget ?? null,
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );

@@ -297,6 +297,157 @@ export function scalePlacement(
   return clampPlacementToPage({ ...resized, y: bottom - resized.height });
 }
 
+/* ---------- Signature target (where the signature is expected) ---------- */
+
+export type SignatureTargetSource = "owner" | "detected" | "fallback";
+
+/**
+ * The area where the customer's signature is expected, in the same
+ * normalized convention as a placement. `locked` means the signature is
+ * fitted into the box automatically and the recipient only reviews.
+ */
+export type SignatureTarget = NormalizedPlacement & {
+  locked: boolean;
+  source: SignatureTargetSource;
+};
+
+/** A text label found on a page, as fractions of the displayed page. */
+export type SignatureAnchor = {
+  x: number;
+  width: number;
+  /** Baseline of the label text, measured from the top. */
+  baseline: number;
+  /** Font height as a fraction of the page height. */
+  height: number;
+};
+
+/** Accepted size range for an owner-defined target box (fractions of the page). */
+export const TARGET_LIMITS = {
+  minWidth: 0.06,
+  maxWidth: 0.9,
+  minHeight: 0.01,
+  maxHeight: 0.5,
+} as const;
+
+/** Width ÷ height of a typical handwritten signature; shapes boxes drawn before any ink exists. */
+export const TYPICAL_SIGNATURE_ASPECT = 3;
+
+/**
+ * Largest rectangle with the signature's aspect ratio that fits inside the
+ * target box, resting on the box's bottom edge and centred horizontally, the
+ * way ink sits on a signature line. Never stretches the signature.
+ */
+export function fitWithinTarget(
+  target: NormalizedPlacement,
+  signatureAspect: number,
+  pageAspect: number,
+): NormalizedPlacement {
+  const aspect =
+    signatureAspect > 0 && Number.isFinite(signatureAspect) ? signatureAspect : TYPICAL_SIGNATURE_ASPECT;
+  // Work in display units where page height = 1 and page width = pageAspect.
+  const boxWidth = target.width * pageAspect;
+  const boxHeight = target.height;
+  let width = boxWidth;
+  let height = width / aspect;
+  if (height > boxHeight) {
+    height = boxHeight;
+    width = height * aspect;
+  }
+
+  const widthFraction = width / pageAspect;
+  return clampPlacementToPage({
+    pageIndex: target.pageIndex,
+    x: target.x + (target.width - widthFraction) / 2,
+    y: target.y + target.height - height,
+    width: widthFraction,
+    height,
+  });
+}
+
+/** True when `inner` lies inside `outer` (same page), with a small tolerance. */
+export function isWithinTarget(
+  inner: NormalizedPlacement,
+  outer: NormalizedPlacement,
+  tolerance = 1e-6,
+): boolean {
+  return (
+    inner.pageIndex === outer.pageIndex &&
+    inner.x >= outer.x - tolerance &&
+    inner.y >= outer.y - tolerance &&
+    inner.x + inner.width <= outer.x + outer.width + tolerance &&
+    inner.y + inner.height <= outer.y + outer.height + tolerance
+  );
+}
+
+/** A target box centred above a detected signature label. */
+export function targetFromAnchor(
+  pageIndex: number,
+  anchor: SignatureAnchor,
+  pageAspect: number,
+): NormalizedPlacement {
+  const width = clamp(anchor.width * 1.1, 0.18, 0.32);
+  const height = (width * pageAspect) / TYPICAL_SIGNATURE_ASPECT;
+  const centerX = anchor.x + anchor.width / 2;
+  // Half a line above the label's top, which is where the ruled line usually is.
+  const bottom = anchor.baseline - anchor.height * 1.5;
+
+  return clampPlacementToPage({ pageIndex, x: centerX - width / 2, y: bottom - height, width, height });
+}
+
+/** Generic lower-left target for documents without any known signature line. */
+export function fallbackTarget(pageIndex: number, pageAspect: number): NormalizedPlacement {
+  const width = 0.28;
+  const height = (width * pageAspect) / TYPICAL_SIGNATURE_ASPECT;
+  return clampPlacementToPage({ pageIndex, x: 0.08, y: 0.86 - height, width, height });
+}
+
+/** A default-sized target box centred on the point the owner tapped. */
+export function targetAtPoint(
+  pageIndex: number,
+  point: { x: number; y: number },
+  pageAspect: number,
+): NormalizedPlacement {
+  const width = 0.26;
+  const height = (width * pageAspect) / TYPICAL_SIGNATURE_ASPECT;
+  return clampPlacementToPage({
+    pageIndex,
+    x: point.x - width / 2,
+    y: point.y - height / 2,
+    width,
+    height,
+  });
+}
+
+/**
+ * Validates an owner-submitted target. Returns null for anything malformed,
+ * off-page, on a missing page, or absurdly small or large.
+ */
+export function parseSignatureTarget(value: unknown, pageCount: number): SignatureTarget | null {
+  const placement = parsePlacement(value, pageCount);
+  if (!placement) {
+    return null;
+  }
+
+  if (
+    placement.width < TARGET_LIMITS.minWidth ||
+    placement.width > TARGET_LIMITS.maxWidth ||
+    placement.height < TARGET_LIMITS.minHeight ||
+    placement.height > TARGET_LIMITS.maxHeight
+  ) {
+    return null;
+  }
+
+  const { locked, source } = value as Record<string, unknown>;
+  if (typeof locked !== "boolean") {
+    return null;
+  }
+
+  const parsedSource: SignatureTargetSource =
+    source === "detected" || source === "fallback" ? source : "owner";
+
+  return { ...placement, locked, source: parsedSource };
+}
+
 const isFraction = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 

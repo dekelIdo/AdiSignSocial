@@ -84,7 +84,7 @@ describe("signed PDF matches the preview (sanitized agreement fixture)", () => {
         // What the browser sends: the overlay's CSS rectangle normalised to the page.
         const placement = displayRectToPlacement(overlayRect, displayedPage, LAST_PAGE_INDEX);
 
-        const signed = await embedSignatureInPdf({
+        const { bytes: signed } = await embedSignatureInPdf({
           pdfBytes: original,
           signaturePng: signature.png,
           placement,
@@ -113,7 +113,7 @@ describe("signed PDF matches the preview (sanitized agreement fixture)", () => {
   it("D: the visible ink rests just above the client signature line, inside its extent", async () => {
     const original = await makeAgreementFixture();
     const target = scenarios["D: on the client signature line"];
-    const signed = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement: target });
+    const { bytes: signed } = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement: target });
     const [paint] = await readImagePaints(signed, REAL_AGREEMENT.pageCount);
     const line = REAL_AGREEMENT.lines.client;
 
@@ -144,7 +144,7 @@ describe("signed PDF matches the preview (sanitized agreement fixture)", () => {
         displayedPage,
         LAST_PAGE_INDEX,
       );
-      const signed = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement });
+      const { bytes: signed } = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement });
       results.push((await readImagePaints(signed, REAL_AGREEMENT.pageCount))[0].pdfBounds);
     }
     for (const bounds of results.slice(1)) {
@@ -170,7 +170,7 @@ describe("rotated and differently sized pages", () => {
     it(name, async () => {
       const original = await makeSinglePagePdf(spec);
       const target = { pageIndex: 0, x: 0.12, y: 0.63, width: 0.3, height: 0.08 };
-      const signed = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement: target });
+      const { bytes: signed } = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement: target });
       const paints = await readImagePaints(signed, 1);
       expect(paints).toHaveLength(1);
       expectSameRect(paints[0].normalized, target);
@@ -187,7 +187,7 @@ describe("real agreement (when available locally)", () => {
     const signature = makeTrimmedSignature();
     const target = scenarioPlacements(signature.aspect)["D: on the client signature line"];
 
-    const signed = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement: target });
+    const { bytes: signed } = await embedSignatureInPdf({ pdfBytes: original, signaturePng: signature.png, placement: target });
     const doc = await PDFDocument.load(signed);
     expect(doc.getPageCount()).toBe(REAL_AGREEMENT.pageCount);
 
@@ -205,5 +205,43 @@ describe("real agreement (when available locally)", () => {
     expect(inkBottom).toBeLessThan(label!.baseline - label!.height);
     expect(ours.normalized.x).toBeGreaterThanOrEqual(REAL_AGREEMENT.lines.client.left / PAGE.width - 0.005);
     expect(ours.normalized.x + ours.normalized.width).toBeLessThanOrEqual(REAL_AGREEMENT.lines.client.right / PAGE.width + 0.005);
+  });
+});
+
+describe("locked target: the server fits the real bitmap into the owner's box", () => {
+  const wide = makeTrimmedSignature();
+  const target = { pageIndex: LAST_PAGE_INDEX, x: 0.09, y: 0.35, width: 0.24, height: 0.055 };
+
+  it("ignores the client's placement and lands inside the box, resting on its bottom edge", async () => {
+    const original = await makeAgreementFixture();
+    const bogusPlacement = { pageIndex: 0, x: 0.5, y: 0.5, width: 0.3, height: 0.1 };
+    const { bytes, placement } = await embedSignatureInPdf({
+      pdfBytes: original,
+      signaturePng: wide.png,
+      placement: bogusPlacement,
+      fitInto: target,
+    });
+    expect(placement.pageIndex).toBe(LAST_PAGE_INDEX);
+    expect(await readImagePaints(bytes, 1)).toHaveLength(0);
+    const [paint] = await readImagePaints(bytes, REAL_AGREEMENT.pageCount);
+    expectSameRect(paint.normalized, placement);
+    expect(paint.normalized.x).toBeGreaterThanOrEqual(target.x - 1e-6);
+    expect(paint.normalized.x + paint.normalized.width).toBeLessThanOrEqual(target.x + target.width + 1e-6);
+    expect(paint.normalized.y + paint.normalized.height).toBeCloseTo(target.y + target.height, 6);
+    const drawnAspect = (paint.normalized.width * PAGE.width) / (paint.normalized.height * PAGE.height);
+    expect(drawnAspect).toBeCloseTo(wide.aspect, 6);
+  });
+
+  it("is identical whatever the client sends (viewport independence by construction)", async () => {
+    const original = await makeAgreementFixture();
+    const results = [];
+    for (const clientPlacement of [
+      { pageIndex: LAST_PAGE_INDEX, x: 0.1, y: 0.36, width: 0.2, height: 0.05 },
+      { pageIndex: LAST_PAGE_INDEX, x: 0.12, y: 0.3, width: 0.1, height: 0.02 },
+    ]) {
+      const { bytes } = await embedSignatureInPdf({ pdfBytes: original, signaturePng: wide.png, placement: clientPlacement, fitInto: target });
+      results.push((await readImagePaints(bytes, REAL_AGREEMENT.pageCount))[0].pdfBounds);
+    }
+    expect(results[1]).toEqual(results[0]);
   });
 });

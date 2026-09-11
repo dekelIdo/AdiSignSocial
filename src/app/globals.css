@@ -548,3 +548,169 @@ dialog.sheet[open] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Signature target (owner box + recipient placeholder) ---------- */
+
+.sig-overlay--target {
+  background: rgba(187, 221, 250, 0.16);
+  outline: 2px dashed var(--color-accent-deep);
+  outline-offset: 0;
+}
+
+.sig-overlay--target > img {
+  opacity: 0.75;
+}
+
+.sig-overlay__tag {
+  position: absolute;
+  top: -1.55rem;
+  right: 0;
+  padding: 0.08rem 0.55rem;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  color: var(--color-accent-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.sig-target {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  border: 2px dashed var(--color-accent-deep);
+  border-radius: 0.45rem;
+  background: rgba(187, 221, 250, 0.16);
+  color: var(--color-accent-ink);
+  font-weight: 600;
+  font-size: clamp(0.72rem, 3.4cqw, 1rem);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  container-type: size;
+}
+
+.sig-target__icon {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.sig-target--flash {
+  animation: target-flash 1.6s ease-out 1;
+}
+
+@keyframes target-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(94, 168, 232, 0);
+  }
+  20%,
+  65% {
+    box-shadow: 0 0 0 10px rgba(94, 168, 232, 0.32);
+    background: rgba(187, 221, 250, 0.32);
+  }
+}
+
+.target-click-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: crosshair;
+}
+
+/* ---------- Jump-to-signature chip ---------- */
+
+.jump-chip {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.25rem;
+  padding: 0 1.35rem;
+  border: 1px solid rgba(94, 168, 232, 0.5);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--color-accent-ink);
+  font-weight: 700;
+  font-size: 1.05rem;
+  box-shadow: 0 10px 28px rgba(42, 42, 46, 0.16);
+  transform: translateX(-50%);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.jump-chip:hover {
+  background: #fff;
+}
+
+.jump-chip--hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(140%);
+  pointer-events: none;
+}
+
+/* ---------- Toggle ---------- */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3rem;
+  padding: 0 0.25rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input {
+  appearance: none;
+  width: 3rem;
+  height: 1.75rem;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--color-line-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.toggle input::after {
+  content: "";
+  position: absolute;
+  top: 0.2rem;
+  inset-inline-start: 0.2rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(42, 42, 46, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.toggle input:checked {
+  background: var(--color-accent-deep);
+}
+
+.toggle input:checked::after {
+  transform: translateX(-1.25rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sig-target--flash {
+    animation: none;
+    box-shadow: 0 0 0 8px rgba(94, 168, 232, 0.32);
+    background: rgba(187, 221, 250, 0.32);
+  }
+}

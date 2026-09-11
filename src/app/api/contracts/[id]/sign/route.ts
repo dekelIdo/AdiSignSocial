@@ -56,13 +56,22 @@ export async function POST(request: Request, { params }: RouteContext) {
   const signedAt = new Date().toISOString();
   const fileName = signedFileName(metadata.clientName);
 
+  // When the owner locked the position, the server fits the real bitmap into
+  // the owner's box itself; the client's placement is only a preview.
+  const target = metadata.signatureTarget;
+  const fitInto = target && target.locked ? target : null;
+  let embeddedPlacement = placement;
+
   try {
     const originalPdf = await readOriginalPdf(id);
-    signedPdf = await embedSignatureInPdf({
+    const embedded = await embedSignatureInPdf({
       pdfBytes: new Uint8Array(originalPdf),
       signaturePng,
       placement,
+      fitInto,
     });
+    signedPdf = embedded.bytes;
+    embeddedPlacement = embedded.placement;
     await saveSignedPdf(id, signedPdf);
     await updateMetadata(id, { signedAt, signedFileName: fileName });
   } catch (signError) {
@@ -111,6 +120,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     emailSent,
     signedUrl: `/api/contracts/${id}/signed`,
     fileName,
+    placement: embeddedPlacement,
   });
 }
 

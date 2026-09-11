@@ -22,5 +22,11 @@ export default async function SignPage({ params }: SignPageProps) {
     return <MissingLinkScreen />;
   }
 
-  return <SigningFlow contractId={id} clientName={contract.clientName} />;
+  return (
+    <SigningFlow
+      contractId={id}
+      clientName={contract.clientName}
+      signatureTarget={contract.signatureTarget ?? null}
+    />
+  );
 }

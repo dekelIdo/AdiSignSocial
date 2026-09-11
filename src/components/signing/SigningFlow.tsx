@@ -5,27 +5,29 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActionBar, type SigningPhase } from "@/components/signing/ActionBar";
 import { DocumentViewer } from "@/components/signing/DocumentViewer";
+import { JumpToSignature } from "@/components/signing/JumpToSignature";
 import { SignatureOverlay, type OverlayMode } from "@/components/signing/SignatureOverlay";
 import { SignaturePadSheet } from "@/components/signing/SignaturePadSheet";
+import { SignaturePlaceholder } from "@/components/signing/SignaturePlaceholder";
 import { ErrorScreen, LoadingScreen } from "@/components/signing/StatusScreens";
-import {
-  findSignatureAnchor,
-  initialPlacement,
-  loadPdfDocument,
-  type LoadedPdf,
-  type SignatureAnchor,
-} from "@/lib/pdf-client";
+import { findSignatureAnchorInDocument, loadPdfDocument, type LoadedPdf } from "@/lib/pdf-client";
 import type { ExportedSignature } from "@/lib/signature-export";
 import {
   clampPlacementToPage,
+  fallbackTarget,
+  fitWithinTarget,
   scalePlacement,
   sizePlacement,
+  targetFromAnchor,
   type NormalizedPlacement,
+  type SignatureTarget,
 } from "@/lib/signature-placement";
 
 type SigningFlowProps = {
   contractId: string;
   clientName?: string;
+  /** Owner-defined signature area, when the link was created with one. */
+  signatureTarget?: SignatureTarget | null;
 };
 
 type LoadStatus =
@@ -36,28 +38,36 @@ type LoadStatus =
 const LOAD_ERROR = "לא הצלחנו לפתוח את ההסכם. נסי שוב, ואם הבעיה חוזרת אפשר לפנות לעדי.";
 const SUBMIT_ERROR = "לא הצלחנו לסיים את החתימה. נסי שוב, ואם הבעיה חוזרת אפשר לפנות לעדי.";
 const RESIZE_STEP = 1.15;
+const FLASH_MS = 1800;
+/** Height reserved for the sticky bar when centring the target on screen. */
+const BAR_ALLOWANCE = 150;
 
 function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
+export function SigningFlow({ contractId, clientName, signatureTarget }: SigningFlowProps) {
   const router = useRouter();
   const [status, setStatus] = useState<LoadStatus>({ kind: "loading", progress: null });
   const [loaded, setLoaded] = useState<LoadedPdf | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [target, setTarget] = useState<SignatureTarget | null>(null);
   const [phase, setPhase] = useState<SigningPhase>("reading");
   const [padOpen, setPadOpen] = useState(false);
   const [signature, setSignature] = useState<ExportedSignature | null>(null);
   const [placement, setPlacement] = useState<NormalizedPlacement | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [lastPageVisible, setLastPageVisible] = useState(false);
+  const [targetInView, setTargetInView] = useState(false);
   const [inlineCtaVisible, setInlineCtaVisible] = useState(false);
+  const [flashing, setFlashing] = useState(false);
   const [notice, setNotice] = useState("");
   const inlineCtaRef = useRef<HTMLButtonElement | null>(null);
-  const anchorRef = useRef<SignatureAnchor | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
   const pageElements = useRef(new Map<number, HTMLDivElement>());
   const overlayElement = useRef<HTMLDivElement | null>(null);
+  const [placeholderElement, setPlaceholderElement] = useState<HTMLDivElement | null>(null);
+  const flashTimer = useRef<number | null>(null);
 
   const retryLoad = () => {
     setStatus({ kind: "loading", progress: null });
@@ -68,7 +78,6 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
   useEffect(() => {
     let cancelled = false;
     let handle: LoadedPdf | null = null;
-    anchorRef.current = null;
 
     loadPdfDocument(`/api/contracts/${contractId}/pdf`, (fraction) => {
       if (!cancelled) {
@@ -87,16 +96,37 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
         setLoaded(result);
         setStatus({ kind: "ready" });
 
-        // Find the signature label on the last page in the background; it
-        // only decides where the signature first appears.
+        const pageCount = result.pageSizes.length;
+        const lastIndex = pageCount - 1;
+
+        // 1. the owner's explicit target wins
+        if (signatureTarget && signatureTarget.pageIndex < pageCount) {
+          setTarget(signatureTarget);
+          return;
+        }
+
+        // 2. a detected signature label, 3. a generic lower-left area
+        let resolved: SignatureTarget;
         try {
-          const lastPage = await result.pdf.getPage(result.pdf.numPages);
-          const anchor = await findSignatureAnchor(lastPage);
-          if (!cancelled) {
-            anchorRef.current = anchor;
+          const detected = await findSignatureAnchorInDocument(result.pdf);
+          if (detected) {
+            const size = result.pageSizes[detected.pageIndex];
+            resolved = {
+              ...targetFromAnchor(detected.pageIndex, detected.anchor, size.width / size.height),
+              locked: false,
+              source: "detected",
+            };
+          } else {
+            const size = result.pageSizes[lastIndex];
+            resolved = { ...fallbackTarget(lastIndex, size.width / size.height), locked: false, source: "fallback" };
           }
-        } catch (anchorError) {
-          console.warn("Signature anchor detection skipped", anchorError);
+        } catch {
+          const size = result.pageSizes[lastIndex];
+          resolved = { ...fallbackTarget(lastIndex, size.width / size.height), locked: false, source: "fallback" };
+        }
+
+        if (!cancelled) {
+          setTarget(resolved);
         }
       })
       .catch((error: unknown) => {
@@ -110,11 +140,10 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
       cancelled = true;
       void handle?.destroy();
     };
-  }, [contractId, attempt]);
+  }, [contractId, attempt, signatureTarget]);
 
   // The sticky bar steps aside once the inline "sign" button is fully visible
-  // above the bar's own zone, so the reader never sees the same button twice
-  // and never sees only a sliver of it.
+  // above the bar's own zone, so the reader never sees the same button twice.
   useEffect(() => {
     const node = inlineCtaRef.current;
     if (!node || phase !== "reading" || !loaded) {
@@ -132,9 +161,34 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
     };
   }, [phase, loaded]);
 
+  // Knowing whether the signature area is on screen drives the shortcut chip
+  // and the "sign here" bar.
+  useEffect(() => {
+    if (!placeholderElement) {
+      setTargetInView(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setTargetInView(entry.intersectionRatio >= 0.6),
+      { threshold: [0, 0.6, 1] },
+    );
+    observer.observe(placeholderElement);
+    return () => observer.disconnect();
+  }, [placeholderElement]);
+
+  useEffect(
+    () => () => {
+      if (flashTimer.current) {
+        window.clearTimeout(flashTimer.current);
+      }
+    },
+    [],
+  );
+
   const pageCount = loaded?.pageSizes.length ?? 0;
-  const lastPageIndex = pageCount - 1;
-  const lastPageSize = loaded?.pageSizes[lastPageIndex];
+  const activeIndex = placement?.pageIndex ?? target?.pageIndex ?? pageCount - 1;
+  const activePageSize = loaded?.pageSizes[activeIndex];
 
   const handleRenderError = useCallback((error: unknown) => {
     console.error("Page render failed", error);
@@ -149,9 +203,9 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
     }
   }, []);
 
-  const getLastPageElement = useCallback(
-    () => pageElements.current.get(lastPageIndex) ?? null,
-    [lastPageIndex],
+  const getActivePageElement = useCallback(
+    () => pageElements.current.get(activeIndex) ?? null,
+    [activeIndex],
   );
 
   const scrollToSignature = useCallback(() => {
@@ -163,33 +217,60 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
     });
   }, []);
 
-  const handleSignatureReady = (exported: ExportedSignature) => {
-    if (!lastPageSize) {
+  /** Scrolls the signature area into the middle of the usable screen and emphasises it. */
+  const jumpToTarget = () => {
+    if (!target) {
+      return;
+    }
+    const pageElement = pageElements.current.get(target.pageIndex);
+    if (!pageElement) {
       return;
     }
 
-    const pageAspect = lastPageSize.width / lastPageSize.height;
+    const pageRect = pageElement.getBoundingClientRect();
+    const headerHeight = headerRef.current?.offsetHeight ?? 0;
+    const usable = Math.max(200, window.innerHeight - headerHeight - BAR_ALLOWANCE);
+    const targetTop = window.scrollY + pageRect.top + target.y * pageRect.height;
+    const targetHeight = target.height * pageRect.height;
+    const top = Math.max(0, targetTop - headerHeight - (usable - targetHeight) / 2);
+
+    window.scrollTo({ top, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+
+    setFlashing(true);
+    if (flashTimer.current) {
+      window.clearTimeout(flashTimer.current);
+    }
+    flashTimer.current = window.setTimeout(() => setFlashing(false), FLASH_MS);
+  };
+
+  const handleSignatureReady = (exported: ExportedSignature) => {
+    if (!loaded || !target) {
+      return;
+    }
+
+    const size = loaded.pageSizes[target.pageIndex];
+    const pageAspect = size.width / size.height;
     setSignature(exported);
     setPlacement((previous) => {
-      if (previous) {
+      if (previous && !target.locked) {
         // Re-signing keeps the chosen spot: same width, ink stays on the line.
         const resized = sizePlacement(previous, previous.width, exported.aspect, pageAspect);
         return clampPlacementToPage({ ...resized, y: previous.y + previous.height - resized.height });
       }
-      return initialPlacement(lastPageIndex, lastPageSize, exported.aspect, anchorRef.current);
+      return fitWithinTarget(target, exported.aspect, pageAspect);
     });
     setPadOpen(false);
     setNotice("");
-    setPhase("placing");
+    setPhase(target.locked ? "reviewing" : "placing");
     scrollToSignature();
   };
 
   const resizeSignature = (factor: number) => {
-    if (!signature || !placement || !lastPageSize) {
+    if (!signature || !placement || !activePageSize) {
       return;
     }
     setPlacement(
-      scalePlacement(placement, factor, signature.aspect, lastPageSize.width / lastPageSize.height),
+      scalePlacement(placement, factor, signature.aspect, activePageSize.width / activePageSize.height),
     );
   };
 
@@ -228,39 +309,33 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
     }
   };
 
-  if (status.kind === "loading" || !loaded) {
-    if (status.kind === "error") {
-      return (
-        <ErrorScreen
-          title="משהו השתבש בפתיחת ההסכם"
-          message={status.message}
-          onRetry={retryLoad}
-        />
-      );
-    }
-    return (
-      <LoadingScreen clientName={clientName} progress={status.kind === "loading" ? status.progress : null} />
-    );
-  }
-
   if (status.kind === "error") {
     return (
-      <ErrorScreen
-        title="משהו השתבש בפתיחת ההסכם"
-        message={status.message}
-        onRetry={() => setAttempt((value) => value + 1)}
-      />
+      <ErrorScreen title="משהו השתבש בפתיחת ההסכם" message={status.message} onRetry={retryLoad} />
     );
   }
 
+  if (status.kind === "loading" || !loaded) {
+    return <LoadingScreen clientName={clientName} progress={status.kind === "loading" ? status.progress : null} />;
+  }
+
+  const locked = Boolean(target?.locked);
+  const showPlaceholder = Boolean(target && target.source !== "fallback" && !signature);
   const overlayMode: OverlayMode =
     phase === "placing" ? "editing" : phase === "reviewing" ? "review" : "locked";
-  const barVisible = phase !== "reading" || (lastPageVisible && !inlineCtaVisible);
+  const barReason: "target" | "end" = targetInView ? "target" : "end";
+  const barVisible =
+    phase !== "reading" || ((targetInView || lastPageVisible) && !inlineCtaVisible);
+  const chipVisible = phase === "reading" && showPlaceholder && !targetInView && !barVisible && !padOpen;
   const stepIndex = phase === "reading" ? 0 : 1;
+  const readingHint =
+    target && target.source !== "fallback"
+      ? `מקום החתימה מסומן בעמוד ${target.pageIndex + 1}.`
+      : "בסוף ההסכם חותמים.";
 
   return (
     <div className="min-h-dvh">
-      <header className="top-bar">
+      <header ref={headerRef} className="top-bar">
         <div className="mx-auto w-full max-w-[52rem] px-4 py-2 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -283,11 +358,11 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
         </div>
       </header>
 
-      <main className="fade-in mx-auto w-full max-w-[52rem] px-3 pb-[10.5rem] pt-4 sm:px-6 sm:pt-6">
-        {phase === "reading" && !lastPageVisible ? (
-          <p className="mb-4 text-center text-base text-muted">
+      <main className="fade-in mx-auto w-full max-w-[52rem] px-3 pb-[10.5rem] pt-3 sm:px-6 sm:pt-5">
+        {phase === "reading" && !lastPageVisible && !targetInView ? (
+          <p className="mb-3 text-center text-base text-muted">
             {clientName ? `שלום ${clientName}, ` : ""}
-            גללי למטה ועברי על ההסכם. בסוף ההסכם חותמים.
+            גללי ועברי על ההסכם בנחת. {readingHint}
           </p>
         ) : null}
 
@@ -298,33 +373,47 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
           onLastPageVisibleChange={setLastPageVisible}
           onRenderError={handleRenderError}
           onPageElement={handlePageElement}
-          renderPageOverlay={(pageIndex) =>
-            pageIndex === lastPageIndex && signature && placement && lastPageSize ? (
-              <SignatureOverlay
-                placement={placement}
-                signature={signature}
-                pageSize={lastPageSize}
-                mode={overlayMode}
-                onChange={setPlacement}
-                getPageElement={getLastPageElement}
-                overlayRef={(element) => {
-                  overlayElement.current = element;
-                }}
-              />
-            ) : null
-          }
+          renderPageOverlay={(pageIndex) => {
+            if (signature && placement && activePageSize && pageIndex === placement.pageIndex) {
+              return (
+                <SignatureOverlay
+                  placement={placement}
+                  signature={signature}
+                  pageSize={activePageSize}
+                  mode={overlayMode}
+                  onChange={setPlacement}
+                  getPageElement={getActivePageElement}
+                  overlayRef={(element) => {
+                    overlayElement.current = element;
+                  }}
+                />
+              );
+            }
+            if (showPlaceholder && target && pageIndex === target.pageIndex) {
+              return (
+                <SignaturePlaceholder
+                  target={target}
+                  flashing={flashing}
+                  placeholderRef={setPlaceholderElement}
+                />
+              );
+            }
+            return null;
+          }}
         />
 
         {phase === "reading" ? (
-          <section className="card mx-auto mt-6 max-w-[52rem] px-5 py-7 text-center sm:px-8">
+          <section className="card mx-auto mt-5 max-w-[52rem] px-5 py-6 text-center sm:px-8">
             <h2 className="text-2xl font-semibold text-ink">סיימת לקרוא? עכשיו נשאר רק לחתום.</h2>
             <p className="mt-2 text-lg text-ink-soft">
-              החתימה מצטרפת לעמוד האחרון, בדיוק במקום שתבחרי.
+              {locked
+                ? "החתימה נכנסת אוטומטית למקום המסומן."
+                : "החתימה מצטרפת להסכם במקום המסומן, ואפשר להזיז אותה אם צריך."}
             </p>
             <button
               ref={inlineCtaRef}
               type="button"
-              className="btn btn-primary btn-lg btn-block mt-6 sm:w-auto sm:min-w-72"
+              className="btn btn-primary btn-lg btn-block mt-5 sm:w-auto sm:min-w-72"
               onClick={() => {
                 setNotice("");
                 setPadOpen(true);
@@ -337,9 +426,13 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
         ) : null}
       </main>
 
+      <JumpToSignature visible={chipVisible} onJump={jumpToTarget} />
+
       <ActionBar
         phase={phase}
         visible={barVisible}
+        reason={barReason}
+        locked={locked}
         notice={notice}
         onSign={() => {
           setNotice("");
@@ -359,11 +452,7 @@ export function SigningFlow({ contractId, clientName }: SigningFlowProps) {
         onShrink={() => resizeSignature(1 / RESIZE_STEP)}
       />
 
-      <SignaturePadSheet
-        open={padOpen}
-        onClose={() => setPadOpen(false)}
-        onConfirm={handleSignatureReady}
-      />
+      <SignaturePadSheet open={padOpen} onClose={() => setPadOpen(false)} onConfirm={handleSignatureReady} />
     </div>
   );
 }

@@ -1,14 +1,11 @@
 /**
- * Browser-side pdf.js helpers: loading, page geometry and the initial
- * signature anchor. Everything here runs only in the browser.
+ * Browser-side pdf.js helpers: loading, page geometry and signature label
+ * detection. Everything here runs only in the browser.
  */
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
-import {
-  clampPlacementToPage,
-  sizePlacement,
-  type DisplaySize,
-  type NormalizedPlacement,
-} from "@/lib/signature-placement";
+import type { DisplaySize, SignatureAnchor } from "@/lib/signature-placement";
+
+export type { SignatureAnchor };
 
 type PdfjsModule = typeof import("pdfjs-dist");
 
@@ -72,16 +69,6 @@ export async function loadPdfDocument(
   };
 }
 
-/** A text label on the page, as fractions of the displayed page. */
-export type SignatureAnchor = {
-  x: number;
-  width: number;
-  /** Baseline of the label text, measured from the top. */
-  baseline: number;
-  /** Font height as a fraction of the page height. */
-  height: number;
-};
-
 const ANCHOR_PATTERNS = [/חתימת\s*הלקוח/, /חתימה/, /signature/i];
 
 /**
@@ -123,37 +110,26 @@ export async function findSignatureAnchor(page: PDFPageProxy): Promise<Signature
   return null;
 }
 
+export type DetectedAnchor = { pageIndex: number; anchor: SignatureAnchor };
+
 /**
- * Chooses where a freshly drawn signature first appears: centred above the
- * signature label when one exists, otherwise in the lower-left area of the page.
+ * Scans the document from the last page backwards for a signature label.
+ * Scanned PDFs without a text layer simply return null.
  */
-export function initialPlacement(
-  pageIndex: number,
-  pageSize: DisplaySize,
-  signatureAspect: number,
-  anchor: SignatureAnchor | null,
-): NormalizedPlacement {
-  const pageAspect = pageSize.width / pageSize.height;
-
-  if (anchor && anchor.width > 0.05 && anchor.height > 0) {
-    const sized = sizePlacement(
-      { pageIndex, x: 0, y: 0 },
-      Math.min(Math.max(anchor.width * 1.05, 0.18), 0.3),
-      signatureAspect,
-      pageAspect,
-    );
-    const centerX = anchor.x + anchor.width / 2;
-    // Rest the ink above the label with a gap of half a line, which lands it on
-    // the ruled line that typically sits between the label and the signature.
-    const bottom = anchor.baseline - anchor.height * 1.5;
-
-    return clampPlacementToPage({
-      ...sized,
-      x: centerX - sized.width / 2,
-      y: bottom - sized.height,
-    });
+export async function findSignatureAnchorInDocument(
+  pdf: PDFDocumentProxy,
+): Promise<DetectedAnchor | null> {
+  for (let pageNumber = pdf.numPages; pageNumber >= 1; pageNumber -= 1) {
+    try {
+      const page = await pdf.getPage(pageNumber);
+      const anchor = await findSignatureAnchor(page);
+      if (anchor) {
+        return { pageIndex: pageNumber - 1, anchor };
+      }
+    } catch {
+      // A page without extractable text is not an error; keep looking.
+    }
   }
 
-  const sized = sizePlacement({ pageIndex, x: 0.08, y: 0 }, 0.26, signatureAspect, pageAspect);
-  return clampPlacementToPage({ ...sized, y: 0.86 - sized.height });
+  return null;
 }

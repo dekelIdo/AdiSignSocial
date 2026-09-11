@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { randomBytes } from "crypto";
+import type { SignatureTarget } from "@/lib/signature-placement";
 
 export const MAX_PDF_BYTES = 60 * 1024 * 1024;
 
@@ -12,6 +13,12 @@ export type ContractMetadata = {
   clientName?: string;
   /** Page count read at upload time; used to validate the signature page. */
   pageCount?: number;
+  /**
+   * Where the owner wants the signature (normalized page fractions).
+   * Absent on links created before this feature; those fall back to
+   * label detection in the browser.
+   */
+  signatureTarget?: SignatureTarget;
   signedAt?: string;
   /** File name offered to the client and attached to the owner email. */
   signedFileName?: string;

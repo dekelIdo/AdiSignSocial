@@ -18,6 +18,10 @@ type SignatureOverlayProps = {
   /** Displayed page size in points, for aspect-ratio math. */
   pageSize: DisplaySize;
   mode: OverlayMode;
+  /** "signature" is the recipient's ink; "target" is the owner's expected area. */
+  variant?: "signature" | "target";
+  /** Small tag shown above the box (target variant). */
+  label?: string;
   onChange: (placement: NormalizedPlacement) => void;
   onDragStateChange?: (dragging: boolean) => void;
   /** The element whose box is the displayed page. */
@@ -38,16 +42,19 @@ const NUDGE = 0.01;
 const NUDGE_LARGE = 0.05;
 
 /**
- * The signature as the recipient sees it on the page. Positioned with
- * percentages of the page box so the same fractions drive the preview and the
- * export; pointer deltas are converted with the live page rectangle, which
- * makes the maths immune to scroll offsets, zoom and layout changes.
+ * A box positioned on the page with percentages of the page box, so the same
+ * fractions drive the preview and the export. Pointer deltas are converted
+ * with the live page rectangle, which makes the maths immune to scroll
+ * offsets, zoom and layout changes. Used for the recipient's signature and,
+ * with `variant="target"`, for the owner's expected signature area.
  */
 export function SignatureOverlay({
   placement,
   signature,
   pageSize,
   mode,
+  variant = "signature",
+  label,
   onChange,
   onDragStateChange,
   getPageElement,
@@ -192,12 +199,20 @@ export function SignatureOverlay({
 
   const className = [
     "sig-overlay",
+    variant === "target" && "sig-overlay--target",
     mode === "editing" && (dragging ? "sig-overlay--dragging" : "sig-overlay--editing"),
     mode === "review" && "sig-overlay--review",
     mode === "locked" && "sig-overlay--locked",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const ariaLabel =
+    variant === "target"
+      ? "תיבת מיקום החתימה. גררי אותה למקום שבו הלקוחה חותמת, או הזיזי עם החיצים במקלדת. פלוס ומינוס משנים גודל."
+      : editable
+        ? "החתימה שלך. גררי אותה למקום המסומן, או הזיזי עם החיצים במקלדת. פלוס ומינוס משנים גודל."
+        : "החתימה שלך במקומה על ההסכם.";
 
   return (
     <>
@@ -222,12 +237,8 @@ export function SignatureOverlay({
         }}
         role="group"
         tabIndex={editable ? 0 : -1}
-        aria-roledescription="חתימה ניתנת להזזה"
-        aria-label={
-          editable
-            ? "החתימה שלך. גררי אותה למקום המסומן, או הזיזי עם החיצים במקלדת. פלוס ומינוס משנים גודל."
-            : "החתימה שלך במקומה על ההסכם."
-        }
+        aria-roledescription={variant === "target" ? "תיבת מיקום ניתנת להזזה" : "חתימה ניתנת להזזה"}
+        aria-label={ariaLabel}
         onPointerDown={(event) => beginGesture(event, "move")}
         onPointerMove={moveGesture}
         onPointerUp={endGesture}
@@ -235,7 +246,8 @@ export function SignatureOverlay({
         onLostPointerCapture={endGesture}
         onKeyDown={handleKeyDown}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- the recipient's own signature bitmap */}
+        {label ? <span className="sig-overlay__tag">{label}</span> : null}
+        {/* eslint-disable-next-line @next/next/no-img-element -- signature bitmap or demo sample */}
         <img src={signature.dataUrl} alt="" draggable={false} />
         {editable ? (
           <div

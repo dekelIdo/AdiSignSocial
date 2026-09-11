@@ -1,5 +1,7 @@
 import { PDFDocument, degrees, toDegrees, type Rotation } from "pdf-lib";
 import {
+  displayedPageSize,
+  fitWithinTarget,
   placementToPdfDrawing,
   type NormalizedPlacement,
   type PageGeometry,
@@ -10,6 +12,18 @@ export type EmbedSignatureInput = {
   pdfBytes: Uint8Array;
   /** PNG bytes of the trimmed signature (transparent background). */
   signaturePng: Uint8Array;
+  /** Where the recipient placed the signature (fractions of the displayed page). */
+  placement: NormalizedPlacement;
+  /**
+   * When the owner locked the position, the server ignores the client's
+   * placement and fits the actual bitmap into this box instead.
+   */
+  fitInto?: NormalizedPlacement | null;
+};
+
+export type EmbedSignatureResult = {
+  bytes: Uint8Array;
+  /** The placement that was actually embedded. */
   placement: NormalizedPlacement;
 };
 
@@ -37,17 +51,32 @@ export async function embedSignatureInPdf({
   pdfBytes,
   signaturePng,
   placement,
-}: EmbedSignatureInput): Promise<Uint8Array> {
+  fitInto,
+}: EmbedSignatureInput): Promise<EmbedSignatureResult> {
   const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
-  const page = pages[placement.pageIndex];
+  const image = await pdfDoc.embedPng(signaturePng);
 
-  if (!page) {
-    throw new Error(`Page index ${placement.pageIndex} is outside the document`);
+  let finalPlacement = placement;
+  if (fitInto) {
+    const targetPage = pages[fitInto.pageIndex];
+    if (!targetPage) {
+      throw new Error(`Target page index ${fitInto.pageIndex} is outside the document`);
+    }
+    const displayed = displayedPageSize(getPageGeometry(targetPage));
+    finalPlacement = fitWithinTarget(
+      fitInto,
+      image.width / image.height,
+      displayed.width / displayed.height,
+    );
   }
 
-  const image = await pdfDoc.embedPng(signaturePng);
-  const drawing = placementToPdfDrawing(placement, getPageGeometry(page));
+  const page = pages[finalPlacement.pageIndex];
+  if (!page) {
+    throw new Error(`Page index ${finalPlacement.pageIndex} is outside the document`);
+  }
+
+  const drawing = placementToPdfDrawing(finalPlacement, getPageGeometry(page));
 
   page.drawImage(image, {
     x: drawing.x,
@@ -57,5 +86,5 @@ export async function embedSignatureInPdf({
     rotate: degrees(drawing.rotate),
   });
 
-  return pdfDoc.save();
+  return { bytes: await pdfDoc.save(), placement: finalPlacement };
 }
