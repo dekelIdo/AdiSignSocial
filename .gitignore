@@ -26,3 +26,6 @@ pnpm-debug.log*
 # system
 .DS_Store
 Thumbs.db
+
+# typescript incremental cache
+tsconfig.tsbuildinfo

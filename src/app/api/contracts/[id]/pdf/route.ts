@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { readMetadata, readOriginalPdf } from "@/lib/contracts";
+import { findMetadata, readOriginalPdf } from "@/lib/contracts";
+import { asciiFallbackFileName, contentDisposition } from "@/lib/filenames";
 
 export const runtime = "nodejs";
 
@@ -8,21 +9,37 @@ type RouteContext = {
 };
 
 export async function GET(_request: Request, { params }: RouteContext) {
-  try {
-    const { id } = await params;
-    const [metadata, pdfBytes] = await Promise.all([readMetadata(id), readOriginalPdf(id)]);
+  const { id } = await params;
+  const metadata = await findMetadata(id);
 
-    return new NextResponse(pdfBytes, {
+  if (!metadata) {
+    return NextResponse.json({ message: "הקישור הזה כבר לא זמין." }, { status: 404 });
+  }
+
+  try {
+    const pdfBytes = await readOriginalPdf(id);
+
+    return new NextResponse(new Uint8Array(pdfBytes), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${encodeURIComponent(metadata.originalName)}"`,
-        "Cache-Control": "private, max-age=0, must-revalidate",
+        // Content-Length lets the browser show real loading progress.
+        "Content-Length": String(pdfBytes.byteLength),
+        "Content-Disposition": contentDisposition(
+          "inline",
+          metadata.originalName,
+          asciiFallbackFileName(),
+        ),
+        // no-transform keeps proxies from re-compressing, which would drop
+        // Content-Length and with it the loading progress.
+        "Cache-Control": "private, max-age=0, must-revalidate, no-transform",
+        "X-Content-Type-Options": "nosniff",
       },
     });
-  } catch {
-    return NextResponse.json(
-      { message: "This signing link is no longer available." },
-      { status: 404 },
-    );
+  } catch (error) {
+    console.error("Original PDF could not be read", {
+      contractId: id,
+      error: error instanceof Error ? error.message : error,
+    });
+    return NextResponse.json({ message: "הקישור הזה כבר לא זמין." }, { status: 404 });
   }
 }

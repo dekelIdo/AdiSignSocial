@@ -8,21 +8,36 @@ export type ContractMetadata = {
   id: string;
   originalName: string;
   uploadedAt: string;
+  /** Optional client name entered by the owner when creating the link. */
+  clientName?: string;
+  /** Page count read at upload time; used to validate the signature page. */
+  pageCount?: number;
   signedAt?: string;
+  /** File name offered to the client and attached to the owner email. */
+  signedFileName?: string;
   emailSentAt?: string;
   emailErrorAt?: string;
+  /** Last delivery error, kept for the owner. Never shown to the client. */
+  emailError?: string;
 };
 
 const dataRoot = process.env.CONTRACT_STORAGE_DIR
   ? path.resolve(process.env.CONTRACT_STORAGE_DIR)
   : path.join(process.cwd(), ".data", "contracts");
 
+const CONTRACT_ID_PATTERN = /^[A-Za-z0-9_-]{8,32}$/;
+
+/** 96 bits of randomness, URL safe. Unguessable and free of filesystem meaning. */
 export function createContractId() {
-  return randomBytes(9).toString("base64url");
+  return randomBytes(12).toString("base64url");
+}
+
+export function isValidContractId(id: string) {
+  return CONTRACT_ID_PATTERN.test(id);
 }
 
 export function getContractDir(id: string) {
-  if (!/^[A-Za-z0-9_-]{8,32}$/.test(id)) {
+  if (!isValidContractId(id)) {
     throw new Error("Invalid contract id");
   }
 
@@ -35,12 +50,18 @@ export async function ensureContractDir(id: string) {
   return contractDir;
 }
 
-export async function saveOriginalPdf(id: string, fileName: string, bytes: Buffer) {
+export async function saveOriginalPdf(
+  id: string,
+  bytes: Buffer,
+  details: Pick<ContractMetadata, "originalName" | "clientName" | "pageCount">,
+) {
   const contractDir = await ensureContractDir(id);
   const metadata: ContractMetadata = {
     id,
-    originalName: fileName,
+    originalName: details.originalName,
     uploadedAt: new Date().toISOString(),
+    ...(details.clientName ? { clientName: details.clientName } : {}),
+    ...(details.pageCount ? { pageCount: details.pageCount } : {}),
   };
 
   await Promise.all([
@@ -68,9 +89,29 @@ export async function readMetadata(id: string): Promise<ContractMetadata> {
   return JSON.parse(raw) as ContractMetadata;
 }
 
+/** Returns null instead of throwing when the link is unknown or malformed. */
+export async function findMetadata(id: string): Promise<ContractMetadata | null> {
+  if (!isValidContractId(id)) {
+    return null;
+  }
+
+  try {
+    return await readMetadata(id);
+  } catch {
+    return null;
+  }
+}
+
 export async function writeMetadata(id: string, metadata: ContractMetadata) {
   await writeFile(
     path.join(await ensureContractDir(id), "metadata.json"),
     JSON.stringify(metadata, null, 2),
   );
+}
+
+export async function updateMetadata(id: string, patch: Partial<ContractMetadata>) {
+  const current = await readMetadata(id);
+  const next = { ...current, ...patch };
+  await writeMetadata(id, next);
+  return next;
 }

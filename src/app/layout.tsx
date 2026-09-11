@@ -16,7 +16,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Pinch zoom stays available for readers who need it.
+  viewportFit: "cover",
+  themeColor: "#faf8f5",
 };
 
 export default function RootLayout({

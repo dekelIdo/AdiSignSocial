@@ -1,42 +1,60 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, degrees, toDegrees, type Rotation } from "pdf-lib";
+import {
+  placementToPdfDrawing,
+  type NormalizedPlacement,
+  type PageGeometry,
+  type PdfBox,
+} from "@/lib/signature-placement";
 
-const SIGNATURE_Y_OFFSET = -80;
+export type EmbedSignatureInput = {
+  pdfBytes: Uint8Array;
+  /** PNG bytes of the trimmed signature (transparent background). */
+  signaturePng: Uint8Array;
+  placement: NormalizedPlacement;
+};
 
-export async function addSignatureToLastPage(pdfBytes: Uint8Array, signatureDataUrl: string) {
-  const base64Signature = signatureDataUrl.split(",")[1];
-  if (!base64Signature) {
-    throw new Error("Signature image is missing");
+type PageLike = {
+  getMediaBox: () => PdfBox;
+  getCropBox: () => PdfBox;
+  getRotation: () => Rotation;
+};
+
+/** Reads the geometry that pdf.js and pdf-lib agree on for a page. */
+export function getPageGeometry(page: PageLike): PageGeometry {
+  return {
+    mediaBox: page.getMediaBox(),
+    cropBox: page.getCropBox(),
+    rotation: toDegrees(page.getRotation()),
+  };
+}
+
+/**
+ * Embeds the signature image on the page described by the placement. The
+ * placement is expressed in fractions of the displayed page (see
+ * `signature-placement.ts`), so the result matches the on-screen preview.
+ */
+export async function embedSignatureInPdf({
+  pdfBytes,
+  signaturePng,
+  placement,
+}: EmbedSignatureInput): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+  const page = pages[placement.pageIndex];
+
+  if (!page) {
+    throw new Error(`Page index ${placement.pageIndex} is outside the document`);
   }
 
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const signatureImage = await pdfDoc.embedPng(Buffer.from(base64Signature, "base64"));
-  const pages = pdfDoc.getPages();
-  const lastPage = pages[pages.length - 1];
-  const { width, height } = lastPage.getSize();
+  const image = await pdfDoc.embedPng(signaturePng);
+  const drawing = placementToPdfDrawing(placement, getPageGeometry(page));
 
-  // Coordinates are PDF page units, not screen pixels. The signature is placed
-  // above the lower-left signing line area and scaled relative to page size.
-  const pageMarginX = width * 0.1;
-  const pageMarginY = height * 0.08;
-  const leftSignatureLineY = height * 0.12;
-  const gapAboveLine = height * 0.015;
-  const maxWidth = width * 0.32;
-  const maxHeight = height * 0.085;
-  const scale = Math.min(maxWidth / signatureImage.width, maxHeight / signatureImage.height);
-  const signatureWidth = signatureImage.width * scale;
-  const signatureHeight = signatureImage.height * scale;
-  const moveSignatureUp = height * 0.2;
-  const x = pageMarginX;
-  const y = Math.min(
-    height - signatureHeight - pageMarginY,
-    Math.max(pageMarginY, leftSignatureLineY + gapAboveLine + moveSignatureUp - SIGNATURE_Y_OFFSET),
-  );
-
-  lastPage.drawImage(signatureImage, {
-    x,
-    y,
-    width: signatureWidth,
-    height: signatureHeight,
+  page.drawImage(image, {
+    x: drawing.x,
+    y: drawing.y,
+    width: drawing.width,
+    height: drawing.height,
+    rotate: degrees(drawing.rotate),
   });
 
   return pdfDoc.save();

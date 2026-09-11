@@ -1,113 +1,86 @@
-# SimpleSign
+# AdiSignSocial (SimpleSign)
 
-SimpleSign is a minimal Next.js application for signing PDF agreements in the browser. A business owner uploads an agreement, sends the generated signing link, and receives the signed PDF by email after the client signs.
+A small, trustworthy signing flow for Adi's client agreements. The owner uploads a PDF and gets a private link; the client opens it on her phone, reads, signs with her finger, places the signature on the signature line, confirms, and downloads or shares the signed PDF. The owner receives the signed PDF by email.
 
-The product intentionally has no login, no accounts, no database, and no separate backend service.
+No login, no accounts, no database, no separate backend.
 
-## Project Overview
+## Stack
 
-- Framework: Next.js App Router with TypeScript.
-- Styling: Tailwind CSS.
-- PDF rendering: pdf.js.
-- PDF signing: pdf-lib.
-- Signature input: react-signature-canvas.
-- Email delivery: Nodemailer over SMTP.
-- Storage: temporary server filesystem storage under `.data/contracts` by default.
+- Next.js App Router with TypeScript (strict), Tailwind CSS v4.
+- PDF rendering in the browser: pdf.js.
+- PDF signing on the server: pdf-lib.
+- Signature input: signature_pad (finger friendly, retina aware).
+- Email delivery: Nodemailer over SMTP (Brevo).
+- Storage: `.data/contracts/<token>/` on the service filesystem (or `CONTRACT_STORAGE_DIR`).
+- Tests: Vitest.
 
-## Local Development
+## How the signing flow works
 
-1. Install dependencies:
+1. `POST /api/contracts` stores the original PDF, an optional client name and the page count, and returns `/sign/<token>` (token = 96 random bits, base64url).
+2. `/sign/<token>` renders all pages with pdf.js. Page boxes are reserved from the PDF's own dimensions before rendering, so nothing jumps.
+3. The client draws a signature; the bitmap is trimmed to its visible ink before it is previewed or sent.
+4. The signature is placed as an overlay on the last page. Its position is stored as **fractions of the displayed page box** (see `src/lib/signature-placement.ts`), which are independent of viewport width, device pixel ratio, zoom and scroll.
+5. `POST /api/contracts/<token>/sign` receives the PNG and the normalized placement, converts the fractions to PDF user-space coordinates using the same CropBox/MediaBox and rotation rules pdf.js uses for display, embeds the image with pdf-lib, stores `signed.pdf`, then emails the owner. Email failure never fails the signing; it is logged and recorded in `metadata.json`.
+6. `/success?id=<token>` offers download (`הסכם-חתום-<שם>.pdf`) and WhatsApp sharing.
+
+## Local development
 
 ```bash
 npm install
-```
-
-2. Create `.env.local` from `.env.example` and fill in SMTP values.
-
-3. Start the development server:
-
-```bash
+cp .env.example .env.local   # fill in SMTP values
 npm run dev
 ```
 
-4. Open `http://localhost:3000`.
+Open `http://localhost:3000`.
 
-## Render Deployment
+## Checks
 
-Deploy as a Render Web Service.
+```bash
+npm run lint
+npm run typecheck
+npm test          # coordinate regression suite (pdf.js cross-check, rotation, real-geometry fixture)
+npm run build
+```
 
-Recommended Render settings:
+To also run the regression against the real agreement (kept outside the repository):
 
-- Runtime: `Node`
-- Build command: `npm install && npm run build`
-- Start command: `npm start`
-- Node version: `20` or newer
+```bash
+REAL_CONTRACT_PDF=/path/to/agreement.pdf npm test
+```
 
-This repository also includes `render.yaml`, so Render can read the service settings automatically.
+## Environment variables
 
-## Environment Variables
-
-Required:
+Required for owner delivery:
 
 ```bash
 EMAIL_HOST=smtp-relay.brevo.com
 EMAIL_PORT=587
-EMAIL_USER=<Brevo SMTP Login>
-EMAIL_PASS=<Brevo SMTP Key>
+EMAIL_USER=<Brevo SMTP login>
+EMAIL_PASS=<Brevo SMTP key>
 OWNER_EMAIL=adiarieli@gmail.com
 ```
 
 Optional:
 
 ```bash
-CONTRACT_STORAGE_DIR=/var/data/contracts
+CONTRACT_STORAGE_DIR=/var/data/contracts   # only with a Render persistent disk
+PUBLIC_BASE_URL=https://adisignsocial.onrender.com   # used for the download link in owner emails
 ```
 
-Use `CONTRACT_STORAGE_DIR` only if a Render persistent disk is mounted. Without it, SimpleSign stores uploaded and signed PDFs in `.data/contracts` on the service filesystem. That storage is suitable for temporary recovery but may be lost if the service is restarted or redeployed.
+Without a persistent disk, uploaded and signed PDFs live on the service filesystem and may be lost on redeploy or restart. The signed PDF is also attached to the owner email.
 
-## SMTP Configuration
+## Render deployment
 
-Use Brevo SMTP with username and password authentication.
-
-Common ports:
-
-- `587` for STARTTLS.
-- `465` for SSL.
-
-`OWNER_EMAIL` receives the signed PDF attachment. If SMTP delivery fails, SimpleSign still saves the signed PDF temporarily so the document is not lost during the request.
+`render.yaml` describes the web service: `npm install && npm run build`, `npm start`, Node 20+. Deploys happen on push to `main`.
 
 ## Troubleshooting
 
-If upload fails:
+- Upload fails: the file must be a readable PDF under 60MB. The upload endpoint parses the PDF up front and returns a clear message if it cannot.
+- Signing succeeded but no email arrived: check Render logs for `Failed to send signed PDF email`; `metadata.json` for the contract holds `emailError`. The signed PDF is still available at `/api/contracts/<token>/signed`.
+- Signature position: the placement pipeline is covered by `src/lib/__tests__`; run `npm test` after touching `signature-placement.ts`, `pdf.ts`, or the overlay.
 
-- Confirm the file is a PDF.
-- Confirm the file is under 60MB.
-- Check Render logs for filesystem write errors.
+## Security notes
 
-If signing succeeds but email does not arrive:
-
-- Confirm all SMTP environment variables are set in Render.
-- Confirm `EMAIL_PORT` is numeric.
-- Confirm Brevo allows sending from `EMAIL_USER`.
-- Check spam or security restrictions in Brevo.
-
-If signed PDF recovery is required after restarts:
-
-- Add a Render persistent disk.
-- Set `CONTRACT_STORAGE_DIR` to the mounted disk path.
-
-## Production Commands
-
-```bash
-npm install
-npm run lint
-npm run build
-npm start
-```
-
-## Security Notes
-
-- `.env` files are ignored.
-- `node_modules` is ignored.
-- `.data` is ignored so uploaded and signed PDFs are not committed.
-- No SMTP passwords or secrets should be committed to the repository.
+- `.env*` files, `node_modules` and `.data` are ignored by git.
+- Tokens are unguessable and carry no filesystem meaning; ids are validated before any path is built.
+- Customer-facing errors are plain Hebrew; technical detail stays in server logs.
